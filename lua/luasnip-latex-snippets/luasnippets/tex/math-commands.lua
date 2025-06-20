@@ -377,14 +377,6 @@ local single_command_math_specs = {
 		},
 		command = [[\substack]],
 	},
-	sq = {
-		context = {
-			name = "sqrt",
-			dscr = "sqrt",
-		},
-		command = [[\sqrt]],
-		ext = { choice = true },
-	},
     bxd = {
         context = {
             name = "boxed",
@@ -406,6 +398,13 @@ for k, v in pairs(single_command_math_specs) do
 		)
 	)
 end
+
+table.insert(single_command_math_snippets,
+  s({ trig = "sqrt", snippetType = "autosnippet", dscr = "square root" }, {
+    t("\\sqrt{"), i(1), t("}")
+  }, { condition = tex.in_math })
+)
+
 vim.list_extend(M, single_command_math_snippets)
 
 local postfix_math_specs = {
