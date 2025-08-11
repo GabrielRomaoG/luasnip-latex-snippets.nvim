@@ -6,8 +6,39 @@ local M = {}
 
 -- math / not math zones
 
+local function in_mathzone_markdown()
+  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+
+  -- Count $$ delimiters before current line
+  local dollar_block_count = 0
+  for i = 1, row do
+    local line = lines[i]
+    -- match a line with only $$ (possibly with spaces)
+    if line:match("^%s*%$%$%s*$") then
+      dollar_block_count = dollar_block_count + 1
+    end
+  end
+
+  -- If odd count, we're inside a $$ ... $$ block
+  if dollar_block_count % 2 == 1 then
+    return true
+  end
+
+  -- Inline math: check current line for odd number of $ before and after cursor
+  local line = lines[row]
+  local before = line:sub(1, col)
+  local after = line:sub(col + 1)
+  local before_count = select(2, before:gsub("%$", ""))
+  local after_count = select(2, after:gsub("%$", ""))
+  return before_count % 2 == 1 and after_count % 2 == 1
+end
+
+
 function M.in_math()
-    return vim.api.nvim_eval("vimtex#syntax#in_mathzone()") == 1
+    vim.notify(vim.bo.filetype)
+    return vim.bo.filetype == "tex" and vim.fn["vimtex#syntax#in_mathzone"]() == 1
+     or vim.bo.filetype == "markdown" and in_mathzone_markdown()
 end
 
 -- comment detection
