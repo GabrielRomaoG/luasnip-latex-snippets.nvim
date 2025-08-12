@@ -36,7 +36,6 @@ end
 
 
 function M.in_math()
-    vim.notify(vim.bo.filetype)
     return vim.bo.filetype == "tex" and vim.fn["vimtex#syntax#in_mathzone"]() == 1
      or vim.bo.filetype == "markdown" and in_mathzone_markdown()
 end
