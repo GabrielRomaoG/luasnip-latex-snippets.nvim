@@ -6,32 +6,79 @@ local M = {}
 
 -- math / not math zones
 
-local function in_mathzone_markdown()
-  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
-  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+local function _last_occurrence(text, pat, upto)
+  local last_s
+  local init = 1
+  while true do
+    local s, e = string.find(text, pat, init)
+    if not s or s > upto then break end
+    last_s = s
+    init = e + 1
+  end
+  return last_s
+end
 
-  -- Count $$ delimiters before current line
-  local dollar_block_count = 0
-  for i = 1, row do
-    local line = lines[i]
-    -- match a line with only $$ (possibly with spaces)
-    if line:match("^%s*%$%$%s*$") then
-      dollar_block_count = dollar_block_count + 1
+local function _next_unpaired_dollar_after(text, from_pos)
+  local init = from_pos
+  while true do
+    local s, e = string.find(text, "%$", init)
+    if not s then return nil end
+    local prev = (s > 1) and text:sub(s-1, s-1) or ""
+    local nxt  = text:sub(s+1, s+1)
+    -- Skip if part of $$ or escaped \$
+    if prev ~= "$" and nxt ~= "$" and prev ~= "\\" then
+      return s, e
     end
+    init = e + 1
+  end
+end
+
+local function _last_unpaired_dollar_before(text, upto)
+  local last_s
+  local init = 1
+  while true do
+    local s, e = string.find(text, "%$", init)
+    if not s or s > upto then break end
+    local prev = (s > 1) and text:sub(s-1, s-1) or ""
+    local nxt  = text:sub(s+1, s+1)
+    if prev ~= "$" and nxt ~= "$" and prev ~= "\\" then
+      last_s = s
+    end
+    init = e + 1
+  end
+  return last_s
+end
+
+local function in_mathzone_markdown()
+  local row1, col = unpack(vim.api.nvim_win_get_cursor(0))
+  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  if not lines or #lines == 0 then return false end
+
+  local buf = table.concat(lines, "\n")
+
+  -- Absolute cursor position in the buffer string (1-based for string.find)
+  local pos = 0
+  for i = 1, row1 - 1 do
+    pos = pos + #lines[i] + 1
+  end
+  pos = pos + col
+  local upto = pos + 1
+
+  -- Check $$...$$
+  local last_dbl_before = _last_occurrence(buf, "%$%$", upto)
+  if last_dbl_before then
+    local next_dbl_after = string.find(buf, "%$%$", upto)
+    if next_dbl_after then return true end
   end
 
-  -- If odd count, we're inside a $$ ... $$ block
-  if dollar_block_count % 2 == 1 then
-    return true
+  -- Check $...$ (ignore $$ and escaped \$)
+  local last_single_before = _last_unpaired_dollar_before(buf, upto)
+  if last_single_before then
+    local next_single_after = _next_unpaired_dollar_after(buf, upto)
+    if next_single_after then return true end
   end
 
-  -- Inline math: check current line for odd number of $ before and after cursor
-  local line = lines[row]
-  local before = line:sub(1, col)
-  local after = line:sub(col + 1)
-  local before_count = select(2, before:gsub("%$", ""))
-  local after_count = select(2, after:gsub("%$", ""))
-  return before_count % 2 == 1 and after_count % 2 == 1
+  return false
 end
 
 
