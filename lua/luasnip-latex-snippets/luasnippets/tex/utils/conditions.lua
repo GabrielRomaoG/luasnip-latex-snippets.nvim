@@ -6,49 +6,6 @@ local M = {}
 
 -- math / not math zones
 
-local function _last_occurrence(text, pat, upto)
-  local last_s
-  local init = 1
-  while true do
-    local s, e = string.find(text, pat, init)
-    if not s or s > upto then break end
-    last_s = s
-    init = e + 1
-  end
-  return last_s
-end
-
-local function _next_unpaired_dollar_after(text, from_pos)
-  local init = from_pos
-  while true do
-    local s, e = string.find(text, "%$", init)
-    if not s then return nil end
-    local prev = (s > 1) and text:sub(s-1, s-1) or ""
-    local nxt  = text:sub(s+1, s+1)
-    -- Skip if part of $$ or escaped \$
-    if prev ~= "$" and nxt ~= "$" and prev ~= "\\" then
-      return s, e
-    end
-    init = e + 1
-  end
-end
-
-local function _last_unpaired_dollar_before(text, upto)
-  local last_s
-  local init = 1
-  while true do
-    local s, e = string.find(text, "%$", init)
-    if not s or s > upto then break end
-    local prev = (s > 1) and text:sub(s-1, s-1) or ""
-    local nxt  = text:sub(s+1, s+1)
-    if prev ~= "$" and nxt ~= "$" and prev ~= "\\" then
-      last_s = s
-    end
-    init = e + 1
-  end
-  return last_s
-end
-
 local function in_mathzone_markdown()
   local row1, col = unpack(vim.api.nvim_win_get_cursor(0))
   local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
@@ -56,31 +13,57 @@ local function in_mathzone_markdown()
 
   local buf = table.concat(lines, "\n")
 
-  -- Absolute cursor position in the buffer string (1-based for string.find)
+  -- Absolute cursor position (1-based for Lua patterns)
   local pos = 0
   for i = 1, row1 - 1 do
     pos = pos + #lines[i] + 1
   end
-  pos = pos + col
-  local upto = pos + 1
+  pos = pos + col + 1 -- now fully 1-based index
 
-  -- Check $$...$$
-  local last_dbl_before = _last_occurrence(buf, "%$%$", upto)
-  if last_dbl_before then
-    local next_dbl_after = string.find(buf, "%$%$", upto)
-    if next_dbl_after then return true end
+  -- === $$...$$ check ===
+  do
+    local open_s, open_e = string.find(buf, "%$%$", 1)
+    while open_s do
+      local close_s, close_e = string.find(buf, "%$%$", open_e + 1)
+      if close_s and pos > open_e and pos < close_s then
+        return true
+      end
+      open_s, open_e = string.find(buf, "%$%$", close_e and close_e + 1 or (open_e + 1))
+    end
   end
 
-  -- Check $...$ (ignore $$ and escaped \$)
-  local last_single_before = _last_unpaired_dollar_before(buf, upto)
-  if last_single_before then
-    local next_single_after = _next_unpaired_dollar_after(buf, upto)
-    if next_single_after then return true end
+  -- === $...$ check (skip $$ and escaped \$) ===
+  do
+    local idx = 1
+    while true do
+      local s, e = string.find(buf, "%$", idx)
+      if not s then break end
+      local prev = (s > 1) and buf:sub(s-1, s-1) or ""
+      local nxt  = buf:sub(e+1, e+1)
+
+      if prev ~= "$" and nxt ~= "$" and prev ~= "\\" then
+        -- found an opening $
+        local cs, ce = string.find(buf, "%$", e + 1)
+        while cs do
+          local prev2 = (cs > 1) and buf:sub(cs-1, cs-1) or ""
+          local nxt2  = buf:sub(ce+1, ce+1)
+          if prev2 ~= "$" and nxt2 ~= "$" and prev2 ~= "\\" then
+            -- found a valid closing $
+            if pos > e and pos < cs then
+              return true
+            else
+              break -- done with this pair
+            end
+          end
+          cs, ce = string.find(buf, "%$", ce + 1)
+        end
+      end
+      idx = e + 1
+    end
   end
 
   return false
 end
-
 
 function M.in_math()
     return vim.bo.filetype == "tex" and vim.fn["vimtex#syntax#in_mathzone"]() == 1
